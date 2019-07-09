@@ -1,0 +1,13 @@
+###
+基于Flask 实现 WebSocket的应用
+区分于单聊以及群聊
+
+群聊
+    启动Flask项目后
+    浏览器访问 127.0.0.1：5000/chats/<username>   # username为群聊中的姓名
+
+单聊
+    启动Flask项目后
+    浏览器访问 127.0.0.1：5000/one_chats/<username>   # username为单聊中的姓名
+    连接后输入好友 <username> 确定后 # 要保证好友也以访问 127.0.0.1：5000/one_chats/<username>
+    连接成功后方可正常通讯

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CH">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <title>群聊室</title>
+    <link rel="stylesheet" href="/static/bootstrap-3.3.7-dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/font-awesome-4.7.0/css/font-awesome.css">
+    <link rel="stylesheet" href="/static/sweetalert.css">
+</head>
+<body style="background-color: #999999">
+<div id="username" style="display: none">{{username}}</div>
+<div class="panel panel-default">
+    <div class="panel-heading  col-lg-4 col-lg-offset-4">
+        <h3 class="panel-title">群聊中</h3>
+    </div>
+    <div class="panel-body  col-lg-4 col-lg-offset-4 " style="background-color: #e0e0e0 ;height: 600px">
+        <div class="content">
+        </div>
+    </div>
+    <div class="col-lg-4 col-lg-offset-4">
+        <input type="text" class="form-control" id="mess">
+        <input class="btn btn-success" type="button" value="发送" id="sned_mes">
+    </div>
+</div>
+
+<script src="/static/jquery-3.3.1.js"></script>
+<script src="/static/bootstrap-3.3.7-dist/js/bootstrap.min.js"></script>
+<script src="/static/sweetalert.min.js"></script>
+<script type="text/javascript">
+    var user = $("#username").text();
+    var ws = new WebSocket('ws://127.0.0.1:5000/group_chat/' + user);
+    $('#sned_mes').click(function () {
+        var mes = $("#mess").val();
+        ws.send(mes);
+        var mes_p = $("<p>");
+        mes_p.attr({"class":'text-right'});
+        mes_p.text($("#username").text()+':'+mes);
+        $(".content").append(mes_p);
+        $("#mess").val('')
+    });
+    ws.onmessage = function (data) {
+        var mes_p = $("<p>");
+        mes_p.text(data.data);
+        $(".content").append(mes_p)
+    }
+
+
+</script>
+</body>
+</html>

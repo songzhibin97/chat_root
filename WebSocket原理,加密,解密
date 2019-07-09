@@ -1,0 +1,184 @@
+	# websocket原理
+		1.服务端运行,等待客户端连接
+		2.客户端连接,服务端同意
+		3.客户端立即发送一个"握手信息"
+		4.服务端接受握手信息后需要对数据进行加密
+			- Sec-websocket-key + magic_string
+			- sha1加密
+			- base64加密
+			将加密后的结果返回给客户端
+		连接成功 双方可以进行互相通讯
+	客户端向服务端发送消息:
+		读取第二个字节的后七位结果获取的对应值
+			127: 10,4
+			126: 4,4
+			<=125: 2,4
+
+
+	# WebSocket协议是基于TCP的一种新的协议。WebSocket最初在HTML5规范中被引用为TCP连接，作为基于TCP的套接字API的占位符。它实现了浏览器与服务器全双工(full-duplex)通信。其本质是保持TCP连接，在浏览器和服务端通过Socket进行通信。
+
+
+### 启动一个套接字 作为接收端
+import socket, base64, hashlib
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(('127.0.0.1', 9527))
+sock.listen(5)
+# 获取客户端socket对象
+conn, address = sock.accept()
+# 获取客户端的【握手】信息
+data = conn.recv(1024)
+print(data)
+
+
+#### 在浏览器建立一个websocket请求
+	var ws = new WebSocket("ws://127.0.0.1:9527")
+
+#### 访问该网页 拿到data值
+"""
+b'GET /ws HTTP/1.1\r\n
+Host: 127.0.0.1:9527\r\n
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:62.0) Gecko/20100101 Firefox/62.0\r\n
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n
+Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2\r\n
+Accept-Encoding: gzip, deflate\r\n
+Sec-WebSocket-Version: 13\r\n
+Origin: http://localhost:63342\r\n
+Sec-WebSocket-Extensions: permessage-deflate\r\n
+Sec-WebSocket-Key: jocLOLLq1BQWp0aZgEWL5A==\r\n
+Cookie: session=6f2bab18-2dc4-426a-8f06-de22909b967b\r\n
+Connection: keep-alive, Upgrade\r\n
+Pragma: no-cache\r\n
+Cache-Control: no-cache\r\n
+Upgrade: websocket\r\n\r\n'
+"""
+
+# magic string为：258EAFA5-E914-47DA-95CA-C5AB0DC85B11
+magic_string = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+
+
+#### 获取请求头中 Sec-WebSocket-Key
+
+def get_headers(data):
+    header_dict = {}
+    header_str = data.decode("utf8")
+    for i in header_str.split("\r\n"):
+        if str(i).startswith("Sec-WebSocket-Key"):
+            header_dict["Sec-WebSocket-Key"] = i.split(":")[1].strip()
+
+    return header_dict
+
+###
+
+def get_header(data):
+    """
+     将请求头格式化成字典
+     :param data:
+     :return:
+     """
+    header_dict = {}
+    data = str(data, encoding='utf-8')
+
+    header, body = data.split('\r\n\r\n', 1)
+    header_list = header.split('\r\n')
+    for i in range(0, len(header_list)):
+        if i == 0:
+            if len(header_list[i].split(' ')) == 3:
+                header_dict['method'], header_dict['url'], header_dict['protocol'] = header_list[i].split(' ')
+        else:
+            k, v = header_list[i].split(':', 1)
+            header_dict[k] = v.strip()
+    return header_dict
+
+
+headers = get_headers(data)  # 提取请求头信息
+
+# 对请求头中的sec-websocket-key进行加密
+response_tpl = "HTTP/1.1 101 Switching Protocols\r\n" \
+               "Upgrade:websocket\r\n" \
+               "Connection: Upgrade\r\n" \
+               "Sec-WebSocket-Accept: %s\r\n" \
+               "WebSocket-Location: ws://127.0.0.1:9527\r\n\r\n"
+
+
+### 将Sec-WebSocket-Key 与 magic_string进行拼接 后加密后作为响应头 携带消息返回
+
+value = headers['Sec-WebSocket-Key'] + magic_string
+print(value)
+ac = base64.b64encode(hashlib.sha1(value.encode('utf-8')).digest())
+response_str = response_tpl % (ac.decode('utf-8'))
+# 响应【握手】信息
+conn.send(response_str.encode("utf8"))
+
+while True:
+    msg = conn.recv(8096)
+    print(msg)
+
+
+
+### 解密
+
+# b'\x81\x83\xceH\xb6\x85\xffz\x85'
+
+### 收到前端send的字符串
+
+hashstr = b'\x81\x83\xceH\xb6\x85\xffz\x85'
+# b'\x81    \x83    \xceH\xb6\x85\xffz\x85'
+
+# 将第二个字节也就是 \x83 第9-16位 进行与127进行位运算
+payload = hashstr[1] & 127
+print(payload)
+if payload == 127:
+    extend_payload_len = hashstr[2:10]
+    mask = hashstr[10:14]
+    decoded = hashstr[14:]
+# 当位运算结果等于127时,则第3-10个字节为数据长度
+# 第11-14字节为mask 解密所需字符串
+# 则数据为第15字节至结尾
+
+if payload == 126:
+    extend_payload_len = hashstr[2:4]
+    mask = hashstr[4:8]
+    decoded = hashstr[8:]
+# 当位运算结果等于126时,则第3-4个字节为数据长度
+# 第5-8字节为mask 解密所需字符串
+# 则数据为第9字节至结尾
+
+
+if payload <= 125:
+    extend_payload_len = None
+    mask = hashstr[2:6]
+    decoded = hashstr[6:]
+
+# 当位运算结果小于等于125时,则这个数字就是数据的长度
+# 第3-6字节为mask 解密所需字符串
+# 则数据为第7字节至结尾
+
+str_byte = bytearray()
+
+for i in range(len(decoded)):
+    byte = decoded[i] ^ mask[i % 4]
+    str_byte.append(byte)
+
+print(str_byte.decode("utf8"))
+
+
+
+### 加密
+
+import struct
+msg_bytes = "hello".encode("utf8")
+token = b"\x81"
+length = len(msg_bytes)
+
+if length < 126:
+    token += struct.pack("B", length)
+elif length == 126:
+    token += struct.pack("!BH", 126, length)
+else:
+    token += struct.pack("!BQ", 127, length)
+
+msg = token + msg_bytes
+
+print(msg)
